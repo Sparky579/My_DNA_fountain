@@ -434,18 +434,6 @@ class Decode():
             valid_barcodes[dna.rstrip("\n")] = 1
         return valid_barcodes
 
-    def _aggressive_mode(self,coverage, seen_seeds):
-        ####Aggresive mode
-        if self.aggressive is not None and self.aggressive.turn_on(int(coverage), seen_seeds):
-            best_file, value = self.aggressive.start()
-            if best_file is not None:
-                copyfile(best_file, self.out)
-                logging.info("Done!")
-            else:
-                logging.error("Could not decode all file...")
-
-            sys.exit(1)
-        ### End of aggressive mode
 
     def _link_glass(self):
         return Glass(self.chunk_num, header_size = self.header_size, rs = self.rs, 
@@ -463,76 +451,6 @@ class Decode():
                 logging.error("%s file not found", self.file_in)
                 sys.exit(0)
         return f
-    def main(self):
-        glass = self._link_glass()
-        f = self._read_file()
-        line = 0
-        errors = 0
-        seen_seeds = defaultdict(int)
-
-        while True:
-            try:     
-                dna = f.readline().rstrip('\n')
-                
-                if len(dna) == 0:
-                    logging.info("Finished reading input file!")
-                    break
-                if ('N' in dna) or (self.fasta and re.search(r"^>", dna)):
-                    continue
-            except:
-                logging.info("Finished reading input file!")
-                break
-
-            #when the file is in the format of coverage \t DNA
-            if (len(dna.split()) == 2):
-
-                coverage, dna = dna.split()
-                self._aggressive_mode(coverage, seen_seeds)
-
-            line += 1
-
-            seed, data = glass.add_dna(dna)
-            if line <3000 :
-                pass
-            else:
-                exit()
-            if seed == -1: #reed-solomon error!
-                errors += 1
-            else:
-                if self.valid_barcodes:
-                    if not dna in self.valid_barcodes:
-                        logging.error("Seed or data %d in line %d are not valid:%s", seed, line, dna)
-                    else:
-                        seen_seeds[dna] += 1
-                else:
-                    seen_seeds[seed] += 1       
-
-            if line % 1000 == 0:
-                logging.info("After reading %d lines, %d chunks are done. So far: %d rejections (%f) %d barcodes", 
-                             line, glass.chunksDone(), errors, errors/(line+0.0), glass.len_seen_seed())
-
-            if line == self.max_line:
-                logging.info("Finished reading maximal number of lines that is %d",self.max_line)
-                break
-
-            if glass.isDone():
-                logging.info("After reading %d lines, %d chunks are done. So far: %d rejections (%f) %d barcodes", 
-                             line, glass.chunksDone(), errors, errors/(line+0.0), glass.len_seen_seed())
-                logging.info("Done!")
-                break
-        f.close()
-        if not glass.isDone():
-            logging.error("Could not decode all file...")
-            sys.exit(1)
-
-        outstring = glass.getString()
-
-        with open(self.out, 'wb') as f:
-            f.write(outstring)
-
-        logging.info("MD5 is %s", fp.get_md5(outstring))
-        logging.info("Out file's name is '%s',that is type of '.tar.gz'", self.out)
-        json.dump(seen_seeds, open("seen_barocdes.json",'w'), sort_keys = True, indent = 4)
 
 
 if __name__=='__main__':

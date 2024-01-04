@@ -21,15 +21,17 @@ class Droplet:
         if self.DNA is not None:
             return self.DNA
         self.DNA = self._int_to_four(self._package())
+        print(self.DNA)
         return self.DNA
     def _int_to_four(self, a):
         bin_data = ''.join('{0:08b}'.format(element) for element in a) #convert to a long sring of binary values
         return ''.join(str(int(bin_data[t:t+2],2)) for t in range(0, len(bin_data),2)) #convert binary array to a string of 0,1,2,3
+
     def _package(self):
-        seed_ord = [c for c in struct.pack("!I", self.seed)]
-        message = seed_ord + self.data
+        seed_ord = list(struct.pack("!I", self.seed))
+        message = bytes(seed_ord) + self.data
         if self.rs > 0:
-            message = self.rs_obj.encode(message) #adding RS symbols to the message
+            message = self.rs_obj.encode(message)  # 根据self.rs_obj的类型调整编码操作
         return message
     
     def to_human_readable_DNA(self):

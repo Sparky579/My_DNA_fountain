@@ -11,6 +11,7 @@ from shutil import copyfile
 from tqdm import tqdm
 import struct
 
+import utils.Colorer
 import utils.file_process as fp
 import json, re, sys, os, logging, operator, numpy, random
 
@@ -46,7 +47,8 @@ class Glass:
         self.seen_seeds = set()
 
         if self.rs > 0:
-            self.RSCodec = RSCodec(rs)
+            # print(rs)
+            self.RSCodec = RSCodec(self.rs)
         else:
             self.RSCodec = None
 
@@ -60,10 +62,12 @@ class Glass:
             # there is an error correcting code
             if self.correct:  # we want to evaluate the error correcting code
                 try:
-
-                    data_corrected = list(self.RSCodec.decode(data)[0])
-
-                except:
+                    data_bytes = self.RSCodec.encode(data)
+                    decoded_data = self.RSCodec.decode(data_bytes)
+                    data_corrected = list(decoded_data[0])
+                    # print(data_corrected)
+                except Exception as e:
+                    print("解码错误:", e)
                     return -1, None  # could not correct the code
                 # we will encode the data again to evaluate the correctness of the decoding
                 data_again = list(self.RSCodec.encode(data_corrected))  # list is to convert byte array to int
@@ -89,8 +93,7 @@ class Glass:
 
         d = Droplet(payload, seed, ix_samples)
         # more error detection (filter DNA that does not make sense)
-        if not sr.screen_repeat(d, self.max_homopolymer, self.gc):
-            # print(666)
+        if sr.screen_repeat(d, self.max_homopolymer, self.gc) == 0:
             return -1, None
         self.addDroplet(d)
         return seed, data
@@ -141,14 +144,27 @@ class Glass:
                 self.updateEntry(other_droplet)
 
     def getString(self):
-        index = 0
-        # return ''.join(x or ' _ ' for x in self.chunks)
-        res = ''
+        res = bytearray()
         for x in self.chunks:
-            res += ''.join(map(chr, x))
-            index += 1
+            # 直接将整数列表转换为字节并添加到结果中
+            res.extend(bytes(x))
+        return bytes(res)  # 返回字节对象
 
-        return res
+    def check_truth(self, droplet, chunk_num):
+        try:
+            truth_data = self.truth[chunk_num]
+        except:
+            logging.error("chunk: %s does not exist.", chunk_num)
+            exit(1)
+
+        if not droplet.data == truth_data:
+            # error
+            logging.error("Decoding error in %s.\nInput is: %s\nOutput is: %s\nDNA: %s",
+                          chunk_num, truth_data, droplet.data, droplet.to_human_readable_DNA(flag_exDNA=False))
+            exit(1)
+        else:
+
+            return 1
 
     def save(self):
         '''name = self.out + '.glass.tmp'
@@ -164,6 +180,7 @@ class Glass:
         return len(self.seen_seeds)
 
     def isDone(self):
+        # print(self.num_chunks, len(self.done_segments))
         if self.num_chunks - len(self.done_segments) > 0:
             return None
         return True
@@ -222,7 +239,21 @@ class Decode():
         self.rand_numpy = rand_numpy
         logging.basicConfig(level=logging.DEBUG)
         sys.setrecursionlimit(10000000)
-        self.truth = None
+        if truth is not None:
+            truth = fp.write_tar(truth)
+            self.truth = fp.read_file(truth, self.size)[0]
+        else:
+            self.truth = None
+
+        if debug_barcodes:
+            self.valid_barcodes = self._load_barcodes()
+        else:
+            self.valid_barcodes = None
+
+        if aggressive:
+            pass# self.aggressive = Aggressive(g=g, file_in=f, times=aggressive)
+        else:
+            self.aggressive = None
 
     def _load_barcodes(self):
         valid_barcodes = dict()
@@ -263,51 +294,64 @@ class Decode():
         errors = 0
         seen_seeds = defaultdict(int)
 
-        for dna in f:
-            dna = dna.rstrip('\n')
-            if not dna or 'N' in dna or (self.fasta and dna.startswith('>')):
-                continue
-
-            line += 1
+        while True:
             try:
-                seed, data = glass.add_dna(dna)
-            except Exception as e:
-                # logging.error(f"Error processing line {line}: {e}")
+                dna = f.readline().rstrip('\n')
+
+                if len(dna) == 0:
+                    logging.info("Finished reading input file!")
+                    break
+                if ('N' in dna) or (self.fasta and re.search(r"^>", dna)):
+                    continue
+            except:
+                logging.info("Finished reading input file!")
                 break
 
+            # when the file is in the format of coverage \t DNA
+
+            line += 1
+
+            seed, data = glass.add_dna(dna)
+            # print(seed, data)
+            if line < 3000:
+                pass
+            else:
+                exit()
             if seed == -1:  # reed-solomon error!
                 errors += 1
             else:
                 seen_seeds[seed] += 1
 
-            if line % 1000 == 0 or line == self.max_line:
+            if line % 1000 == 0:
                 logging.info("After reading %d lines, %d chunks are done. So far: %d rejections (%f) %d barcodes",
                              line, glass.chunksDone(), errors, errors / (line + 0.0), glass.len_seen_seed())
-                if line == self.max_line:
-                    break
 
-            if glass.isDone():
-                logging.info("Done!")
+            if line == self.max_line:
+                logging.info("Finished reading maximal number of lines that is %d", self.max_line)
                 break
 
+            if glass.isDone():
+                logging.info("After reading %d lines, %d chunks are done. So far: %d rejections (%f) %d barcodes",
+                             line, glass.chunksDone(), errors, errors / (line + 0.0), glass.len_seen_seed())
+                logging.info("Done!")
+                break
+        f.close()
         if not glass.isDone():
             logging.error("Could not decode all file...")
             sys.exit(1)
 
-        f.close()
-
         outstring = glass.getString()
-        with open(self.out, 'wb') as fout:
-            fout.write(outstring)
 
-        # logging.info(f"MD5 is {fp.get_md5(outstring)}")
-        # logging.info(f"Out file's name is '{self.out}', that is type of '.tar.gz'")
+        with open(self.out, 'wb') as f:
+            f.write(outstring)
 
-        with open("seen_barocdes.json", 'w') as json_file:
-            json.dump(seen_seeds, json_file, sort_keys=True, indent=4)
+        logging.info("Out file's name is '%s',that is type of '.tar.gz'", self.out)
+        json.dump(seen_seeds, open("seen_barocdes.json", 'w'), sort_keys=True, indent=4)
+
+
 if __name__ == '__main__':
-    f = '50-SF.txt'
-    o = '50-SF-3.jpg'
+    f = '50-SF-2.txt'
+    o = '50-SF-1.jpg'
 
     Decode(header_size=4, rs=5, delta=0.05, c_dist=0.1, chunk_num=1494, max_homopolymer=3, size=16, gc=0.05, file_in=f,
            out=o).main()

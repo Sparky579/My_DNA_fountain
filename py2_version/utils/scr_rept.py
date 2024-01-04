@@ -7,9 +7,9 @@ def prepare(max_repeat):
 
 def screen_repeat(drop, max_repeat, gc_dev):
     dna = drop.toDNA()
-    if As in dna or Cs in dna or Gs in dna or Ts in dna: 
+    if As in dna or Cs in dna or Gs in dna or Ts in dna:
         return 0
-    gc = dna.count("1") + dna.count("2")  
+    gc = dna.count("1") + dna.count("2")
     gc = gc/(len(dna)+0.0)
     if (gc < 0.5 - gc_dev) or (gc > 0.5 + gc_dev):
         return 0

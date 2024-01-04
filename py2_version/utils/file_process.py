@@ -86,26 +86,6 @@ def write_tar(file_name):
     return t
     ##else:
     #    return t + b'\x00' * pad
-    
-def read_tar(file_bin):#,outfiledir = None):
-    #name = temp_name('temp')
-    #if outfiledir:
-    #    if not os.path.exists(outfiledir):
-    #        os.mkdir(outfiledir)
-    #else:
-    #    outfiledir = temp_name('fountain_out_filedir')
-    #    os.mkdir(outfiledir)
-    with open(name,'wb') as f:
-        f.write(file_bin)
-        
-    #with tarfile.open(name, "r:gz") as read:
-    #    filename = str(read.getnames()[0])
-        
-    #    read.extractall(outfiledir)
-    #os.remove(name)
-    #return outfiledir + '/' + filename
-    return name
-    
-    
+
     
     
