@@ -537,6 +537,6 @@ class Decode():
 
 if __name__=='__main__':
     f = '50-SF.txt'
-    o = '50-SF.jpg'
+    o = '50-SF-1.jpg'
 
     Decode(header_size = 4, rs = 5, delta = 0.05, c_dist = 0.1, chunk_num = 1494, max_homopolymer = 3, size = 16, gc = 0.05, file_in = f, out = o).main()
